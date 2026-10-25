@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verify Muna</title>
+  <style>
+    :root {
+      --bg: #f3f6f8;
+      --paper: #ffffff;
+      --ink: #17212b;
+      --muted: #5b6875;
+      --line: #d6dde3;
+      --accent: #1b5e7b;
+      --accent-dark: #134760;
+      --warn-bg: #fff4d6;
+      --warn-ink: #6b4b00;
+      --err-bg: #fde8e8;
+      --err-ink: #8a1f1f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.55;
+    }
+    main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1 { font-family: Georgia, "Times New Roman", serif; font-size: 2.2rem; margin: 0 0 .25rem; }
+    h2 { font-family: Georgia, "Times New Roman", serif; font-size: 1.25rem; margin: 2rem 0 .75rem; }
+    .lede { color: var(--muted); margin: 0 0 1.5rem; max-width: 38rem; }
+
+    textarea {
+      width: 100%;
+      min-height: 9rem;
+      padding: .9rem 1rem;
+      font: inherit;
+      color: inherit;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      resize: vertical;
+    }
+    textarea:focus-visible, button:focus-visible, a:focus-visible {
+      outline: 3px solid #7fb8d1;
+      outline-offset: 2px;
+    }
+    select {
+      margin: .6rem 0 0 .4rem;
+      padding: .4rem .6rem;
+      font: inherit;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    button {
+      margin-top: .75rem;
+      padding: .7rem 1.4rem;
+      font: inherit;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: 0;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-dark); }
+
+    .notice { padding: .8rem 1rem; border-radius: 6px; margin-top: 1.25rem; }
+    .notice.error { background: var(--err-bg); color: var(--err-ink); }
+    .notice.warn { background: var(--warn-bg); color: var(--warn-ink); }
+    .notice ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+
+    .facts { color: var(--muted); font-size: .92rem; margin-top: 1.25rem; }
+    .chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
+    .chip {
+      padding: .15rem .6rem;
+      background: #e3ecf1;
+      border-radius: 999px;
+      font-size: .88rem;
+      color: var(--ink);
+    }
+
+    .result {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--line);
+      border-radius: 6px;
+      padding: .9rem 1rem;
+      margin-bottom: .75rem;
+    }
+    .result.Government { border-left-color: #1b5e7b; }
+    .result.Fact-checker { border-left-color: #2f7d4f; }
+    .result.News { border-left-color: #7a7f85; }
+    .result.International { border-left-color: #8a5a9e; }
+    .result a { color: var(--accent-dark); font-weight: 600; text-decoration: none; }
+    .result a:hover { text-decoration: underline; }
+    .result p { margin: .35rem 0 0; }
+    .meta { color: var(--muted); font-size: .88rem; }
+
+    .empty { background: var(--paper); border: 1px dashed var(--line); border-radius: 6px; padding: 1rem; }
+    .disclaimer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Verify Muna</h1>
+  <p class="lede">Paste a post, forwarded message, or headline. We search trusted Philippine sources and show what they say about it.</p>
+
+  <form method="post">
+    <label for="claim" class="meta">Message to check</label>
+    <textarea id="claim" name="claim" placeholder="Paste the message here (English, Filipino, or Taglish)">{{ text }}</textarea>
+    <label for="period" class="meta">Show articles from</label>
+    <select id="period" name="period">
+      <option value="w" {% if period == "w" %}selected{% endif %}>Past week</option>
+      <option value="m" {% if period == "m" %}selected{% endif %}>Past month</option>
+      <option value="y" {% if period == "y" %}selected{% endif %}>This year ({{ year }})</option>
+    </select>
+    <br>
+    <button type="submit">Find trusted sources</button>
+  </form>
+
+  {% if error %}
+    <div class="notice error" role="alert">{{ error }}</div>
+  {% endif %}
+
+  {% if searched %}
+    <div class="facts">
+      Language detected: {{ language }}
+      {% if keywords %}
+        <div class="chips" aria-label="Keywords used for the search">
+          {% for k in keywords %}<span class="chip">{{ k }}</span>{% endfor %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if flags %}
+      <div class="notice warn">
+        Warning signs in this message:
+        <ul>{% for f in flags %}<li>{{ f }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+
+    <h2>What trusted sources say ({{ year }}, newest first)</h2>
+
+    {% if results %}
+      {% for r in results %}
+        <article class="result {{ r.type }}">
+          <a href="{{ r.link }}" target="_blank" rel="noopener noreferrer">{{ r.title }}</a>
+          <div class="meta">{{ r.source }} &middot; {{ r.type }} &middot; {{ r.date_text }} &middot; {{ r.match }}</div>
+          <p>{{ r.snippet }}</p>
+        </article>
+      {% endfor %}
+    {% else %}
+      <div class="empty">
+        No {{ year }} articles found in the trusted sources. This does not mean the message is false. Try the "Past month" option, paste the full headline, or check the websites directly.
+      </div>
+    {% endif %}
+
+    {% if weak_hidden %}
+      <p class="meta">{{ weak_hidden }} weak match{{ "es" if weak_hidden != 1 }} hidden because they were probably about something else.</p>
+    {% endif %}
+
+    {% if hidden %}
+      <p class="meta">{{ hidden }} result{{ "s" if hidden != 1 }} hidden because they are not from {{ year }} or their publish date could not be confirmed.</p>
+    {% endif %}
+  {% endif %}
+
+  <p class="disclaimer">This tool does not decide whether something is true or false. It only shows what trusted sources have published. Read the articles and judge for yourself.</p>
+</main>
+</body>
+</html>

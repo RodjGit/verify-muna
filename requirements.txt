@@ -1,0 +1,6 @@
+flask
+yake
+langdetect
+scikit-learn
+ddgs
+gunicorn
