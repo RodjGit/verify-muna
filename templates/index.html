@@ -154,7 +154,7 @@
       {% endfor %}
     {% else %}
       <div class="empty">
-        No {{ year }} articles found in the trusted sources. This does not mean the message is false. Try the "Past month" option, paste the full headline, or check the websites directly.
+        {% if raw_count %}The search found {{ raw_count }} article{{ "s" if raw_count != 1 }} on trusted sites, but none could be confirmed as published in {{ year }}.{% else %}No articles found on the trusted sites.{% endif %} This does not mean the message is false. Try the "Past month" option, paste the full headline, or check the websites directly.
       </div>
     {% endif %}
 
