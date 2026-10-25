@@ -58,6 +58,10 @@ FIL_STOPWORDS = {
     # chain-message filler that should not drive the search
     "breaking", "share", "shared", "forward", "forwarded", "viral", "now",
     "news", "urgent", "ipasa", "ipamahagi", "pakishare", "pls", "please",
+    # common English words that add noise when phrases are split into words
+    "will", "would", "can", "could", "should", "has", "have", "had", "the", "and",
+    "for", "with", "from", "that", "this", "are", "was", "were", "been", "all",
+    "starts", "start", "starting", "begins", "begin", "held", "hold",
 }
 
 MIN_LENGTH = 15
@@ -77,16 +81,28 @@ def detect_language(text):
     return "English / Filipino (mixed)"
 
 
+MONTH_WORDS = {
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+}
+
+
 def get_keywords(text, n=6):
-    """Extract the main keywords/keyphrases from the pasted text using YAKE."""
-    extractor = yake.KeywordExtractor(lan="en", n=2, top=n * 2)
-    cleaned = []
+    """Extract the main keywords from the pasted text using YAKE (unique words only)."""
+    extractor = yake.KeywordExtractor(lan="en", n=2, top=n * 3)
+    words = []
     for phrase, _score in extractor.extract_keywords(text):
-        words = [w for w in phrase.lower().split() if w not in FIL_STOPWORDS]
-        phrase = " ".join(words)
-        if phrase and phrase not in cleaned:
-            cleaned.append(phrase)
-    return cleaned[:n]
+        for w in phrase.lower().split():
+            w = w.strip(".,;:!?()\"'")
+            if (
+                len(w) > 2
+                and w not in FIL_STOPWORDS
+                and w not in MONTH_WORDS
+                and not w.isdigit()
+                and w not in words
+            ):
+                words.append(w)
+    return words[:n]
 
 
 def warning_flags(text):
@@ -204,22 +220,45 @@ def _ddg_text(query, max_results, timelimit=None):
 
 
 def search_trusted(query, timelimit=None):
-    """Search the web, keeping only results from the trusted domains."""
-    sites = " OR ".join(f"site:{d}" for d in TRUSTED_SOURCES)
-    raw = _ddg_text(f"{query} ({sites})", 20, timelimit)
+    """Search the web, keeping only results from the trusted domains.
 
-    if not raw:
-        # Fallback: search normally, then keep only trusted domains
-        raw = [
-            r for r in _ddg_text(f"{query} Philippines", 30, timelimit)
-            if source_info(r.get("href", ""))[1] != "Other"
-        ]
+    Several small searches work better than one huge one, so the trusted
+    domains are searched in small batches.
+    """
+    seen, raw = set(), []
+    errors = attempts = 0
+
+    def add(results):
+        for r in results:
+            url = r.get("href", "")
+            if url and url not in seen and source_info(url)[1] != "Other":
+                seen.add(url)
+                raw.append(r)
+
+    def attempt(q, n):
+        nonlocal errors, attempts
+        attempts += 1
+        try:
+            add(_ddg_text(q, n, timelimit))
+        except Exception:
+            errors += 1
+
+    domains = list(TRUSTED_SOURCES)
+    for i in range(0, min(len(domains), 20), 5):
+        sites = " OR ".join(f"site:{d}" for d in domains[i:i + 5])
+        attempt(f"{query} ({sites})", 10)
+        if len(raw) >= 10:
+            break
+
+    if len(raw) < 5:
+        attempt(f"{query} Philippines", 30)
+
+    if not raw and errors == attempts:
+        raise RuntimeError("search failed")
 
     items = []
-    for r in raw:
+    for r in raw[:20]:
         name, kind = source_info(r.get("href", ""))
-        if kind == "Other":
-            continue
         items.append(
             {
                 "title": r.get("title", ""),
@@ -265,6 +304,7 @@ def index():
         "language": None,
         "period": "y",
         "hidden": 0,
+        "raw_count": 0,
         "weak_hidden": 0,
         "year": date.today().year,
         "error": None,
@@ -290,6 +330,7 @@ def index():
                 items = search_trusted(
                     " ".join(ctx["keywords"]), ctx["period"]
                 )
+                ctx["raw_count"] = len(items)
                 items = find_dates(items)
                 this_year = date.today().year
                 current = [i for i in items if i["date"].startswith(str(this_year))]
